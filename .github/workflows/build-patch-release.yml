@@ -65,13 +65,11 @@ jobs:
 
       - name: Update submodule to new release tag
         run: |
-          # Update submodule to the found release tag and push the change
-          git submodule update --init --recursive
           cd source
-          git fetch --tags
+          git pull
           git checkout ${{ needs.check-latest-release.outputs.version }}
           cd ..
-          git add .
+          git add source
           git commit -m "Update submodule to ${{ needs.check-latest-release.outputs.version }}"
           git push
       - name: Overwrite patched files
