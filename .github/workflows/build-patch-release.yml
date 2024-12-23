@@ -90,10 +90,10 @@ jobs:
           git add source
           git commit -m "Update submodule to ${{ needs.check-latest-release.outputs.version }}"
           git push
-          - name: Overwrite patched files
-            run: |
-              # Our 'source' submodule is at the new tag now
-              cp -r ./patched/* ./source/
+      - name: Overwrite patched files
+        run: |
+          # Our 'source' submodule is at the new tag now
+          cp -r ./patched/* ./source/
       - name: Build Docker image
         run: |
           cd source/docker
