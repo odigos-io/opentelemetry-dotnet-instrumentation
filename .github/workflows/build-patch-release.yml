@@ -63,6 +63,7 @@ jobs:
         run: |
           cd source
           git pull
+          git fetch origin --tags --depth=1
           git checkout ${{ needs.check-latest-release.outputs.version }}
           cd ..
           git add source
