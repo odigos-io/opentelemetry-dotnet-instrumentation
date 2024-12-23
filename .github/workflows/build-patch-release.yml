@@ -64,6 +64,8 @@ jobs:
           git fetch origin --tags
           git checkout ${{ needs.check-latest-release.outputs.version }}
           cd ..
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
           git add source
           git commit -m "Update submodule to ${{ needs.check-latest-release.outputs.version }}"
           git push
