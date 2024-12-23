@@ -48,14 +48,19 @@ jobs:
             echo "version=$LATEST_RELEASE" >> $GITHUB_OUTPUT
             echo "has_new_release=false" >> $GITHUB_OUTPUT
           fi
-  build-and-publish:
+
+  build:
     runs-on: ubuntu-latest
     needs: check-latest-release
     if: ${{ needs.check-latest-release.outputs.has_new_release == 'true' }}
+    strategy:
+      matrix:
+        architecture: [amd64, arm64]  # Build for both amd64 and arm64
 
     steps:
       - name: Check out this repository
         uses: actions/checkout@v3
+
       - name: Update submodule to new release tag
         run: |
           git submodule update --init --recursive
@@ -72,33 +77,57 @@ jobs:
           else
           echo "No changes to commit"
           fi
+
       - name: Overwrite patched files
         run: |
           cp -r ./patched/* ./source/
 
-      - name: Build Docker image
+      - name: Build Docker image for ${{ matrix.architecture }}
         run: |
           cd source/docker
-          docker build -t dev/dotnet-builder:dev . -f debian.dockerfile
+          docker build --platform=linux/${{ matrix.architecture }} -t dev/dotnet-builder:${{ matrix.architecture }} . -f debian.dockerfile
 
-      - name: Build native library
+      - name: Build native library for ${{ matrix.architecture }}
         run: |
           cd source
-          docker run -e OS_TYPE=linux-glibc --rm \
+          docker run --platform=linux/${{ matrix.architecture }} -e OS_TYPE=linux-glibc --rm \
             -v "$(pwd)":/project \
-            dev/dotnet-builder:dev \
+            dev/dotnet-builder:${{ matrix.architecture }} \
             ./build.sh buildNativeWorkflow
 
-      - name: Show file size
+      - name: Rename and archive built .so file
         run: |
-          cd source
-          ls -lh src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native.so
+          cd source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin
+          mv OpenTelemetry.AutoInstrumentation.Native.so OpenTelemetry.AutoInstrumentation.Native-${{ matrix.architecture }}.so
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: native-library-${{ matrix.architecture }}
+          path: source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native-${{ matrix.architecture }}.so
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: native-library-amd64
+          path: artifacts/amd64
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: native-library-arm64
+          path: artifacts/arm64
 
       - name: Create release in this repo
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native.so
+            artifacts/amd64/OpenTelemetry.AutoInstrumentation.Native-amd64.so
+            artifacts/arm64/OpenTelemetry.AutoInstrumentation.Native-arm64.so
           tag_name: ${{ needs.check-latest-release.outputs.version }}
           release_name: ${{ needs.check-latest-release.outputs.version }}
           body: |
