@@ -65,26 +65,19 @@ jobs:
 
       - name: Update shallow submodule to new release tag
         run: |
-          # We assume source/ is already present in the repo as a submodule,
-          # but we want to do a shallow fetch of the *new tag* from the upstream.
+          # Set the correct URL for the submodule (if not already set)
+          git submodule set-url source https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation.git
 
-          # Initialize submodule if needed (no full clone)
-          git remote set-url origin https://github.com/${{ env.ORIGINAL_REPO }}.git
-          git submodule init source
+          # Initialize the submodule (ensures it's registered)
+          git submodule init
 
-          # Move into submodule directory
+          # Update the submodule with a shallow fetch for the specific tag
           cd source
-
-          # Fetch only the needed tag (depth=1)
-          # By default, .gitmodules should have "url = https://github.com/${{ env.ORIGINAL_REPO }}.git"
           git fetch --depth=1 origin refs/tags/${{ needs.check-latest-release.outputs.version }}:refs/tags/${{ needs.check-latest-release.outputs.version }}
-
-          # Check out that tag
           git checkout ${{ needs.check-latest-release.outputs.version }}
-
           cd ..
 
-          # Now commit the updated submodule reference in the parent repo
+          # Commit the updated submodule reference
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add source
