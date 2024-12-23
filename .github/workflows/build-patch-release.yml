@@ -57,12 +57,11 @@ jobs:
     if: ${{ needs.check-latest-release.outputs.has_new_release == 'true' }}
 
     steps:
-      - name: Check out this repository (submodules, shallow disabled by default)
+      - name: Check out this repository
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          submodules: false
-
+          submodules: true
       - name: Update submodule to new release tag
         run: |
           cd source
