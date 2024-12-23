@@ -56,8 +56,8 @@ jobs:
     steps:
       - name: Check out this repository
         uses: actions/checkout@v3
-
       - name: Update submodule to new release tag
+        run: |
           git submodule update --init --recursive
           cd source
           git fetch origin --tags
@@ -72,7 +72,6 @@ jobs:
           else
           echo "No changes to commit"
           fi
-
       - name: Overwrite patched files
         run: |
           cp -r ./patched/* ./source/
