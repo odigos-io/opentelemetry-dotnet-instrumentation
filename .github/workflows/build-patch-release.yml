@@ -58,7 +58,6 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Update submodule to new release tag
-        run: |
           git submodule update --init --recursive
           cd source
           git fetch origin --tags
@@ -67,8 +66,12 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add source
+          if ! git diff-index --quiet HEAD; then
           git commit -m "Update submodule to ${{ needs.check-latest-release.outputs.version }}"
           git push
+          else
+          echo "No changes to commit"
+          fi
 
       - name: Overwrite patched files
         run: |
