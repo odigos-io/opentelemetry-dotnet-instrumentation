@@ -82,7 +82,7 @@ jobs:
       - name: Build native library
         run: |
           cd source
-          docker run -it -e OS_TYPE=linux-glibc --rm \
+          docker run -e OS_TYPE=linux-glibc --rm \
             -v "$(pwd)":/project \
             dev/dotnet-builder:dev \
             ./build.sh buildNativeWorkflow
