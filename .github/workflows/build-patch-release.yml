@@ -19,17 +19,14 @@ jobs:
       has_new_release: ${{ steps.determine_release.outputs.has_new_release }}
 
     steps:
-      - name: Check out this repository (with submodules, but we'll override anyway)
+      - name: Check out this repository
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          # We can skip submodules here because we'll do a custom shallow fetch later
-          submodules: false
 
       - name: Determine latest upstream version
         id: get_upstream_release
         run: |
-          # Get the latest release tag (e.g. "v1.2.3") from the upstream repo
           LATEST_RELEASE=$(curl -s https://api.github.com/repos/${{ env.ORIGINAL_REPO }}/releases/latest | jq -r '.tag_name')
           echo "LATEST_RELEASE=$LATEST_RELEASE" >> $GITHUB_OUTPUT
 
@@ -50,7 +47,7 @@ jobs:
             echo "Already up to date."
             echo "version=$LATEST_RELEASE" >> $GITHUB_OUTPUT
             echo "has_new_release=false" >> $GITHUB_OUTPUT
-          fi
+
   build-and-publish:
     runs-on: ubuntu-latest
     needs: check-latest-release
@@ -59,20 +56,22 @@ jobs:
     steps:
       - name: Check out this repository
         uses: actions/checkout@v3
+
       - name: Update submodule to new release tag
         run: |
+          git submodule update --init --recursive
           cd source
-          git pull
-          git fetch origin --tags --depth=1
+          git fetch origin --tags
           git checkout ${{ needs.check-latest-release.outputs.version }}
           cd ..
           git add source
           git commit -m "Update submodule to ${{ needs.check-latest-release.outputs.version }}"
           git push
+
       - name: Overwrite patched files
         run: |
-          # Our 'source' submodule is at the new tag now
           cp -r ./patched/* ./source/
+
       - name: Build Docker image
         run: |
           cd source/docker
@@ -89,7 +88,7 @@ jobs:
       - name: Show file size
         run: |
           cd source
-          ls -lh src/OpenTelemetry.AutoInstrumentation.Native/build/binOpenTelemetry.AutoInstrumentation.Native.so
+          ls -lh src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native.so
 
       - name: Create release in this repo
         id: create_release
@@ -105,7 +104,7 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: source/src/OpenTelemetry.AutoInstrumentation.Native/build/binOpenTelemetry.AutoInstrumentation.Native.so
+          asset_path: source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native.so
           asset_name: OpenTelemetry.AutoInstrumentation.Native.so
           asset_content_type: application/octet-stream
 
