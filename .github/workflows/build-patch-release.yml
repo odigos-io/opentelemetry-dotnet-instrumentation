@@ -95,22 +95,14 @@ jobs:
           ls -lh src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native.so
 
       - name: Create release in this repo
-        id: create_release
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: "${{ needs.check-latest-release.outputs.version }}"
-          release_name: "${{ needs.check-latest-release.outputs.version }}"
-          draft: false
-          prerelease: false
-
-      - name: Upload release asset
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native.so
-          asset_name: OpenTelemetry.AutoInstrumentation.Native.so
-          asset_content_type: application/octet-stream
+          files: |
+            source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native.so
+          tag_name: ${{ needs.check-latest-release.outputs.version }}
+          release_name: ${{ needs.check-latest-release.outputs.version }}
+          body: |
+            This release applies Odigos patches to the ${{ needs.check-latest-release.outputs.version }} upstream release.
 
       - name: Update version.txt
         run: |
