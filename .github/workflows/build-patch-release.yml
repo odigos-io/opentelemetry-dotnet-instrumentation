@@ -54,7 +54,6 @@ jobs:
           fi
 
   build:
-    runs-on: ubuntu-latest
     needs: check-latest-release
     if: ${{ needs.check-latest-release.outputs.has_new_release == 'true' }}
     strategy:
@@ -62,9 +61,11 @@ jobs:
         architecture: 
           - name: amd64
             alias: x64
+            runner: warp-ubuntu-latest-x64-4x-spot
           - name: arm64
             alias: arm64
-
+            runner: warp-ubuntu-latest-arm64-4x-spot
+    runs-on: ${{ matrix.architecture.runner }}
     steps:
       - name: Check out this repository
         uses: actions/checkout@v3
