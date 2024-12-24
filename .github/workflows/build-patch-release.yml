@@ -49,13 +49,15 @@ jobs:
             echo "has_new_release=true" >> $GITHUB_OUTPUT
           else
             echo "Already up to date."
-            echo "version=$LATEST_RELEASE" >> $GITHUB_OUTPUT
+            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
             echo "has_new_release=false" >> $GITHUB_OUTPUT
           fi
 
   build:
     needs: check-latest-release
     if: ${{ needs.check-latest-release.outputs.has_new_release == 'true' }}
+    outputs:
+      version: ${{ needs.check-latest-release.outputs.version }}
     strategy:
       matrix:
         architecture: 
@@ -124,7 +126,7 @@ jobs:
           git config user.email "github-actions@github.com"
           git add source
           if ! git diff-index --quiet HEAD; then
-            git commit -m "Update submodule to ${{ needs.check-latest-release.outputs.version }}"
+            git commit -m "Update submodule to ${{ needs.build.outputs.version }}"
             git push
           else
             echo "No submodule changes to push"
@@ -132,14 +134,14 @@ jobs:
 
       - name: Update version.txt
         run: |
-          echo "${{ needs.check-latest-release.outputs.version }}" > version.txt
+          echo "${{ needs.build.outputs.version }}" > version.txt
           git add version.txt
 
       - name: Commit and push version.txt
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git commit -m "Update version.txt to ${{ needs.check-latest-release.outputs.version }}"
+          git commit -m "Update version.txt to ${{ needs.build.outputs.version }}"
           git push
 
   release:
@@ -164,7 +166,7 @@ jobs:
           files: |
             artifacts/amd64/OpenTelemetry.AutoInstrumentation.Native-x64.so
             artifacts/arm64/OpenTelemetry.AutoInstrumentation.Native-arm64.so
-          tag_name: ${{ needs.check-latest-release.outputs.version }}
-          release_name: ${{ needs.check-latest-release.outputs.version }}
+          tag_name: ${{ needs.build.outputs.version }}
+          release_name: ${{ needs.build.outputs.version }}
           body: |
-            This release applies Odigos patches to the ${{ needs.check-latest-release.outputs.version }} upstream release.
+            This release applies Odigos patches to the ${{ needs.build.outputs.version }} upstream release.
