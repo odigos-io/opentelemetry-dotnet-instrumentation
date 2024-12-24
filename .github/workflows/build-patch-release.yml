@@ -51,6 +51,7 @@ jobs:
             echo "Already up to date."
             echo "version=$LATEST_RELEASE" >> $GITHUB_OUTPUT
             echo "has_new_release=false" >> $GITHUB_OUTPUT
+          fi
 
   build:
     runs-on: ubuntu-latest
