@@ -1,16 +1,3 @@
-name: Build and Release Patched Repo
-
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: '0 0 * * *'  # Runs daily at midnight UTC (adjust as needed)
-
-permissions:
-  contents: write  # Needed to push updated submodule references, create releases, etc.
-
-env:
-  ORIGINAL_REPO: open-telemetry/opentelemetry-dotnet-instrumentation
-
 jobs:
   check-latest-release:
     runs-on: ubuntu-latest
@@ -28,6 +15,10 @@ jobs:
         id: get_upstream_release
         run: |
           LATEST_RELEASE=$(curl -s https://api.github.com/repos/${{ env.ORIGINAL_REPO }}/releases/latest | jq -r '.tag_name')
+          if [ -z "$LATEST_RELEASE" ]; then
+            echo "Failed to fetch the latest release." >&2
+            exit 1
+          fi
           echo "LATEST_RELEASE=$LATEST_RELEASE" >> $GITHUB_OUTPUT
 
       - name: Determine if release is new
@@ -47,7 +38,6 @@ jobs:
             echo "Already up to date."
             echo "version=$LATEST_RELEASE" >> $GITHUB_OUTPUT
             echo "has_new_release=false" >> $GITHUB_OUTPUT
-          fi
 
   build:
     runs-on: ubuntu-latest
@@ -55,11 +45,18 @@ jobs:
     if: ${{ needs.check-latest-release.outputs.has_new_release == 'true' }}
     strategy:
       matrix:
-        architecture: [amd64, arm64]  # Build for both amd64 and arm64
+        architecture: 
+          - name: amd64
+            alias: x64
+          - name: arm64
+            alias: arm64
 
     steps:
       - name: Check out this repository
         uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx (if cross-compiling)
+        uses: docker/setup-buildx-action@v3
 
       - name: Update submodule to new release tag
         run: |
@@ -68,44 +65,67 @@ jobs:
           git fetch origin --tags
           git checkout ${{ needs.check-latest-release.outputs.version }}
           cd ..
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
           git add source
-          if ! git diff-index --quiet HEAD; then
-          git commit -m "Update submodule to ${{ needs.check-latest-release.outputs.version }}"
-          git push
-          else
-          echo "No changes to commit"
-          fi
 
       - name: Overwrite patched files
-        run: |
-          cp -r ./patched/* ./source/
+        run: cp -r ./patched/* ./source/
 
-      - name: Build Docker image for ${{ matrix.architecture }}
+      - name: Build Docker image for ${{ matrix.architecture.alias }}
         run: |
           cd source/docker
-          docker build --platform=linux/${{ matrix.architecture }} -t dev/dotnet-builder:${{ matrix.architecture }} . -f debian.dockerfile
+          docker build --platform=linux/${{ matrix.architecture.name }} -t dev/dotnet-builder:${{ matrix.architecture.alias }} . -f debian.dockerfile
 
-      - name: Build native library for ${{ matrix.architecture }}
+      - name: Build native library for ${{ matrix.architecture.alias }}
         run: |
           cd source
-          docker run --platform=linux/${{ matrix.architecture }} -e OS_TYPE=linux-glibc --rm \
+          docker run --platform=linux/${{ matrix.architecture.name }} -e OS_TYPE=linux-glibc --rm \
             -v "$(pwd)":/project \
-            dev/dotnet-builder:${{ matrix.architecture }} \
+            dev/dotnet-builder:${{ matrix.architecture.alias }} \
             ./build.sh buildNativeWorkflow
 
       - name: Rename and archive built .so file
         run: |
           cd source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin
-          mv OpenTelemetry.AutoInstrumentation.Native.so OpenTelemetry.AutoInstrumentation.Native-${{ matrix.architecture }}.so
-        shell: bash
+          mv OpenTelemetry.AutoInstrumentation.Native.so OpenTelemetry.AutoInstrumentation.Native-${{ matrix.architecture.alias }}.so
 
       - name: Upload artifact
         uses: actions/upload-artifact@v3
         with:
-          name: native-library-${{ matrix.architecture }}
-          path: source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native-${{ matrix.architecture }}.so
+          name: native-library-${{ matrix.architecture.alias }}
+          path: source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native-${{ matrix.architecture.alias }}.so
+
+  push-updates:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Push submodule update
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add source
+          if ! git diff-index --quiet HEAD; then
+            git commit -m "Update submodule to ${{ needs.check-latest-release.outputs.version }}"
+            git push
+          else
+            echo "No submodule changes to push"
+          fi
+
+      - name: Update version.txt
+        run: |
+          echo "${{ needs.check-latest-release.outputs.version }}" > version.txt
+          git add version.txt
+
+      - name: Commit and push version.txt
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git commit -m "Update version.txt to ${{ needs.check-latest-release.outputs.version }}"
+          git push
 
   release:
     runs-on: ubuntu-latest
@@ -114,8 +134,9 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
-          name: native-library-amd64
+          name: native-library-x64
           path: artifacts/amd64
+
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
@@ -126,21 +147,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/amd64/OpenTelemetry.AutoInstrumentation.Native-amd64.so
+            artifacts/amd64/OpenTelemetry.AutoInstrumentation.Native-x64.so
             artifacts/arm64/OpenTelemetry.AutoInstrumentation.Native-arm64.so
           tag_name: ${{ needs.check-latest-release.outputs.version }}
           release_name: ${{ needs.check-latest-release.outputs.version }}
           body: |
             This release applies Odigos patches to the ${{ needs.check-latest-release.outputs.version }} upstream release.
-
-      - name: Update version.txt
-        run: |
-          echo "${{ needs.check-latest-release.outputs.version }}" > version.txt
-
-      - name: Commit and push version.txt
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add version.txt
-          git commit -m "Update version.txt to ${{ needs.check-latest-release.outputs.version }}"
-          git push
