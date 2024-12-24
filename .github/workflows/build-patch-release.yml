@@ -1,3 +1,16 @@
+name: Build and Release Patched Repo
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'  # Runs daily at midnight UTC (adjust as needed)
+
+permissions:
+  contents: write  # Needed to push updated submodule references, create releases, etc.
+
+env:
+  ORIGINAL_REPO: open-telemetry/opentelemetry-dotnet-instrumentation
+
 jobs:
   check-latest-release:
     runs-on: ubuntu-latest
