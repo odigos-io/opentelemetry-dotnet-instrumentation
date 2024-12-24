@@ -100,14 +100,14 @@ jobs:
 
       - name: Rename and archive built .so file
         run: |
-          cd source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin
-          mv OpenTelemetry.AutoInstrumentation.Native.so OpenTelemetry.AutoInstrumentation.Native-${{ matrix.architecture.alias }}.so
+          mkdir out
+          cp ./source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native.so out/OpenTelemetry.AutoInstrumentation.Native-${{ matrix.architecture.alias }}.so
 
       - name: Upload artifact
         uses: actions/upload-artifact@v3
         with:
           name: native-library-${{ matrix.architecture.alias }}
-          path: source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native-${{ matrix.architecture.alias }}.so
+          path: out/OpenTelemetry.AutoInstrumentation.Native-${{ matrix.architecture.alias }}.so
 
   push-updates:
     runs-on: ubuntu-latest
