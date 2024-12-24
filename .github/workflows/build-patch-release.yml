@@ -87,7 +87,7 @@ jobs:
       - name: Build Docker image for ${{ matrix.architecture.alias }}
         run: |
           cd source/docker
-          docker buildx build --platform=linux/${{ matrix.architecture.name }} -t dev/dotnet-builder:${{ matrix.architecture.alias }} . -f debian.dockerfile
+          docker buildx build --platform=linux/${{ matrix.architecture.name }} -t dev/dotnet-builder:${{ matrix.architecture.alias }} . -f debian.dockerfile --load
 
       - name: Build native library for ${{ matrix.architecture.alias }}
         run: |
