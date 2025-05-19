@@ -106,7 +106,7 @@ jobs:
           cp ./source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native.so out/OpenTelemetry.AutoInstrumentation.Native-${{ matrix.architecture.alias }}.so
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: native-library-${{ matrix.architecture.alias }}
           path: out/OpenTelemetry.AutoInstrumentation.Native-${{ matrix.architecture.alias }}.so
@@ -149,13 +149,13 @@ jobs:
     needs: build
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: native-library-x64
           path: artifacts/amd64
 
       - name: Download artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: native-library-arm64
           path: artifacts/arm64
