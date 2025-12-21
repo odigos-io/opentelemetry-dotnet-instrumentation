@@ -1,0 +1,41 @@
+name: PR Smoke Test
+
+on: ["pull_request"]
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Overwrite patched files
+        run: cp -r ./patched/* ./source/
+
+      - name: Build Docker image
+        run: |
+          cd source/docker
+          docker buildx build --platform=linux/amd64 -t dev/dotnet-builder:smoke-test . -f debian.dockerfile --load
+
+      - name: Build native library (smoke test)
+        run: |
+          cd source
+          docker run --platform=linux/amd64 -e OS_TYPE=linux-glibc --rm \
+            -v "$(pwd)":/project \
+            dev/dotnet-builder:smoke-test \
+            ./build.sh buildNativeWorkflow
+
+      - name: Verify build output
+        run: |
+          if [ -f ./source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native.so ]; then
+            echo "✅ Native library built successfully"
+            ls -lh ./source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native.so
+          else
+            echo "❌ Native library not found"
+            exit 1
+          fi
