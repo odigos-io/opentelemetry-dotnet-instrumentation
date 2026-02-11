@@ -63,10 +63,10 @@ jobs:
         architecture: 
           - name: amd64
             alias: x64
-            runner: warp-ubuntu-latest-x64-4x-spot
+            runner: depot-ubuntu-24.04-8
           - name: arm64
             alias: arm64
-            runner: warp-ubuntu-latest-arm64-4x-spot
+            runner: depot-ubuntu-24.04-arm-8
     runs-on: ${{ matrix.architecture.runner }}
     steps:
       - name: Check out this repository
@@ -98,7 +98,7 @@ jobs:
           docker run --platform=linux/${{ matrix.architecture.name }} -e OS_TYPE=linux-glibc --rm \
             -v "$(pwd)":/project \
             dev/dotnet-builder:${{ matrix.architecture.alias }} \
-            ./build.sh buildNativeWorkflow
+            ./build.sh
 
       - name: Rename and archive built .so file
         run: |
