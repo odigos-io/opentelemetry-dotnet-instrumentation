@@ -2,8 +2,8 @@ name: Build and Release Patched Repo
 
 on:
   workflow_dispatch:
-  # schedule:
-  #   - cron: '0 0 * * *'  # Runs daily at midnight UTC (adjust as needed)
+  schedule:
+    - cron: '0 0 * * *'  # Runs daily at midnight UTC (adjust as needed)
 
 permissions:
   contents: write  # Needed to push updated submodule references, create releases, etc.
@@ -71,6 +71,8 @@ jobs:
     steps:
       - name: Check out this repository
         uses: actions/checkout@v3
+        with:
+          submodules: recursive
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx (if cross-compiling)
@@ -84,12 +86,9 @@ jobs:
           cd ..
           git add source
 
-      - name: Overwrite patched files
-        run: cp -r ./patched/* ./source/
-
       - name: Build Docker image for ${{ matrix.architecture.alias }}
         run: |
-          cd source/docker
+          cd patched/docker
           docker buildx build --platform=linux/${{ matrix.architecture.name }} -t dev/dotnet-builder:${{ matrix.architecture.alias }} . -f debian.dockerfile --load
 
       - name: Build native library for ${{ matrix.architecture.alias }}
