@@ -99,7 +99,7 @@ jobs:
           - name: glibc-dotnet9
           - name: legacy
     runs-on: ${{ matrix.architecture.runner }}
-    needs: [build-with-glibc, build-with-musl-legacy-dotnet6-bundle]
+    needs: [build-with-glibc, build-legacy-dotnet6-with-musl]
     steps:
       - name: Download glibc-dotnet9 bundle
         if: matrix.bundle.name == 'glibc-dotnet9'
@@ -144,7 +144,7 @@ jobs:
           severity-cutoff: "HIGH,CRITICAL"
 
   # Need to build musl
-  build-with-musl-legacy-dotnet6-bundle:
+  build-legacy-dotnet6-with-musl:
     strategy:
       matrix:
         architecture:
@@ -231,7 +231,7 @@ jobs:
           name: legacy-bundle-${{ matrix.architecture.alias }}
           path: ./source/bin/tracer-home/
 
-  test-e2e-legacy-musl-bundle:
+  e2e-test-legacy-musl:
     strategy:
       matrix:
         architecture:
@@ -242,7 +242,7 @@ jobs:
             alias: arm64
             runner: depot-ubuntu-24.04-arm-8
     runs-on: ${{ matrix.architecture.runner }}
-    needs: build-with-musl-legacy-dotnet6-bundle
+    needs: build-legacy-dotnet6-with-musl
     steps:
       - name: Check out this repository
         uses: actions/checkout@v3

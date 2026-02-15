@@ -1,13 +1,13 @@
 # This dockerfile is used for building a musl-based image for the legacy bundle
 FROM mcr.microsoft.com/dotnet/sdk:6.0-alpine
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+RUN apk update && \
+    apk add \
         g++ \
         cmake \
         clang \
         make \
-        build-essential \
+        build-base linux-headers \
         wget
 
 # Install .NET Core 3.1 runtime (needed for netcoreapp3.1 test targets)
