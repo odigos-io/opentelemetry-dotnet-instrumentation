@@ -11,11 +11,11 @@ RUN wget https://packages.microsoft.com/config/debian/12/packages-microsoft-prod
         make
 
 
-# Install .NET Core 8.0 runtime (needed for net8.0 test targets)
+# Install .NET Core 8.0.404 runtime (needed for net8.0.404 test targets)
 RUN wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh && \
     chmod +x dotnet-install.sh && \
-    ./dotnet-install.sh --runtime dotnet --channel 8.0 --install-dir /usr/share/dotnet && \
-    ./dotnet-install.sh --runtime aspnetcore --channel 8.0 --install-dir /usr/share/dotnet && \
+    ./dotnet-install.sh --runtime dotnet --channel 8.0.404 --install-dir /usr/share/dotnet && \
+    ./dotnet-install.sh --runtime aspnetcore --channel 8.0.404 --install-dir /usr/share/dotnet && \
     rm dotnet-install.sh
 
 WORKDIR /project
