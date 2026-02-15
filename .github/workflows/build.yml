@@ -1,4 +1,4 @@
-name: Build
+name: Build and test
 
 on:
   pull_request:
@@ -42,9 +42,6 @@ jobs:
           git checkout $VERSION
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -77,72 +74,6 @@ jobs:
           name: OpenTelemetry.AutoInstrumentation.Native-${{ steps.get_version.outputs.version }}-${{ matrix.architecture.alias }}.so
           path: ./source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native.so
 
-      # Upload the full build output directory
-      - name: Upload build output directory
-        uses: actions/upload-artifact@v4
-        with:
-          name: glibc-dotnet9-bundle-${{ matrix.architecture.alias }}
-          path: ./source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/
-
-  vulnerability-scan:
-    strategy:
-      fail-fast: false
-      matrix:
-        architecture:
-          - name: amd64
-            alias: x64
-            runner: depot-ubuntu-24.04-8
-          - name: arm64
-            alias: arm64
-            runner: depot-ubuntu-24.04-arm-8
-        bundle:
-          - name: glibc-dotnet9
-          - name: legacy
-    runs-on: ${{ matrix.architecture.runner }}
-    needs: [build-with-glibc, build-legacy-dotnet6-with-musl]
-    steps:
-      - name: Download glibc-dotnet9 bundle
-        if: matrix.bundle.name == 'glibc-dotnet9'
-        uses: actions/download-artifact@v4
-        with:
-          name: glibc-dotnet9-bundle-${{ matrix.architecture.alias }}
-          path: ./glibc-dotnet9-bundle
-
-      - name: Scan glibc-dotnet9 bundle for vulnerabilities
-        if: matrix.bundle.name == 'glibc-dotnet9'
-        uses: odigos-io/ci-core/vulnerabilities-scanner@main
-        with:
-          path: ./glibc-dotnet9-bundle
-          severity-cutoff: "HIGH,CRITICAL"
-
-      - name: Download native library
-        if: matrix.bundle.name == 'legacy'
-        uses: actions/download-artifact@v4
-        with:
-          name: legacy-native-build-${{ matrix.architecture.alias }}
-          path: ./native-library
-
-      - name: Download legacy bundle
-        if: matrix.bundle.name == 'legacy'
-        uses: actions/download-artifact@v4
-        with:
-          name: legacy-bundle-${{ matrix.architecture.alias }}
-          path: ./legacy-bundle
-
-      - name: Scan native library for vulnerabilities
-        if: matrix.bundle.name == 'legacy'
-        uses: odigos-io/ci-core/vulnerabilities-scanner@main
-        with:
-          path: ./native-library
-          severity-cutoff: "HIGH,CRITICAL"
-
-      - name: Scan legacy bundle for vulnerabilities
-        if: matrix.bundle.name == 'legacy'
-        uses: odigos-io/ci-core/vulnerabilities-scanner@main
-        with:
-          path: ./legacy-bundle
-          severity-cutoff: "HIGH,CRITICAL"
-
   # Need to build musl
   build-legacy-dotnet6-with-musl:
     strategy:
@@ -171,9 +102,6 @@ jobs:
       - name: Overwrite patched files
         run: cp -r ./patched/* ./source/
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -181,54 +109,29 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./patched/docker
-          file: ./patched/docker/legacy.debian.dockerfile
+          file: ./patched/docker/legacy.musl.dockerfile
           platforms: linux/${{ matrix.architecture.name }}
           push: false
           load: true
           tags: dev/dotnet-builder:${{ matrix.architecture.alias }}-legacy
-
-      # - name: Install .NET SDK 6.0 and .NET Core 3.1 runtime
-      #   run: |
-      #     wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
-      #     chmod +x dotnet-install.sh
-      #     ./dotnet-install.sh --channel 6.0 --install-dir /usr/share/dotnet
-      #     ./dotnet-install.sh --runtime dotnet --channel 3.1 --install-dir /usr/share/dotnet
-      #     ./dotnet-install.sh --runtime aspnetcore --channel 3.1 --install-dir /usr/share/dotnet
-      #     rm dotnet-install.sh
-      #     echo "/usr/share/dotnet" >> $GITHUB_PATH
-      #     echo "DOTNET_ROOT=/usr/share/dotnet" >> $GITHUB_ENV
 
       - name: Build and test for ${{ matrix.architecture.alias }}
         run: |
           cd source
           docker run --platform=linux/${{ matrix.architecture.name }} -e OS_TYPE=linux-musl --rm \
           -v "$(pwd)":/project \
-          dev/dotnet-builder:${{ matrix.architecture.alias }} \
+          dev/dotnet-builder:${{ matrix.architecture.alias }}-legacy \
           ./build.sh
 
       - name: Verify built artifact exists
         run: |
           test -f ./source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native.so
 
-      # Upload the .so file
-      - name: Upload native .so
+      # Upload the tracer-home directory
+      - name: Upload tracer-home
         uses: actions/upload-artifact@v4
         with:
-          name: OpenTelemetry.AutoInstrumentation.Native-${{ env.LEGACY_TAG }}-${{ matrix.architecture.alias }}.so
-          path: ./source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native.so
-
-      # Upload the full build output directory
-      - name: Upload build output directory
-        uses: actions/upload-artifact@v4
-        with:
-          name: legacy-native-build-${{ matrix.architecture.alias }}
-          path: ./source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/
-
-      # Upload the assembled legacy-bundle (managed DLLs, startup hook, etc.)
-      - name: Upload legacy-bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: legacy-bundle-${{ matrix.architecture.alias }}
+          name: tracer-home-${{ matrix.architecture.alias }}
           path: ./source/bin/tracer-home/
 
   e2e-test-legacy-musl:
@@ -249,25 +152,11 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Download native library
+      - name: Download tracer-home
         uses: actions/download-artifact@v4
         with:
-          name: legacy-native-build-${{ matrix.architecture.alias }}
-          path: ./downloaded
-
-      - name: Restore native library to source directory
-        run: |
-          mkdir -p ./source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin
-          cp -r ./downloaded/* ./source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/
-
-      - name: Download legacy-bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: legacy-bundle-${{ matrix.architecture.alias }}
+          name: tracer-home-${{ matrix.architecture.alias }}
           path: ./source/bin/tracer-home/
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -276,7 +165,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./patched/docker
-          file: ./patched/docker/legacy.debian.dockerfile
+          file: ./patched/docker/legacy.musl.dockerfile
           platforms: linux/${{ matrix.architecture.name }}
           push: false
           load: true
@@ -292,4 +181,32 @@ jobs:
             -v "$(pwd)":/project \
             dev/dotnet-builder:${{ matrix.architecture.alias }}-legacy \
             bash ./e2e/run-core3-spans-test.sh
-          # OS_TYPE=linux-glibc bash ./e2e/run-core3-spans-test.sh
+
+  vulnerability-scan:
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture:
+          - name: amd64
+            alias: x64
+            runner: depot-ubuntu-24.04-8
+          - name: arm64
+            alias: arm64
+            runner: depot-ubuntu-24.04-arm-8
+        bundle:
+          - name: glibc-dotnet9
+          - name: legacy
+    runs-on: ${{ matrix.architecture.runner }}
+    needs: [build-with-glibc, build-legacy-dotnet6-with-musl]
+    steps:
+      - name: Download tracer-home
+        uses: actions/download-artifact@v4
+        with:
+          name: tracer-home-${{ matrix.architecture.alias }}
+          path: ./tracer-home
+
+      - name: Scan tracer-home for vulnerabilities
+        uses: odigos-io/ci-core/vulnerabilities-scanner@main
+        with:
+          path: ./tracer-home
+          severity-cutoff: "HIGH,CRITICAL"

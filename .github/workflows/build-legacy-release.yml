@@ -1,4 +1,4 @@
-name: Build and Release legacy (dotnet 6)
+name: Build and Release legacy (dotnet , musl-based)
 
 on:
   workflow_dispatch:
@@ -10,7 +10,6 @@ env:
   LEGACY_TAG: v0.4.0-beta.1
 
 jobs:
-
   build:
     strategy:
       matrix:
@@ -35,40 +34,33 @@ jobs:
           git fetch --tags
           git checkout ${{ env.LEGACY_TAG }}
 
-      - name: Install native build tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends g++ cmake clang make build-essential
-
-      - name: Install .NET SDK 6.0 and .NET Core 3.1 runtime
-        run: |
-          wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
-          chmod +x dotnet-install.sh
-          ./dotnet-install.sh --channel 6.0 --install-dir /usr/share/dotnet
-          ./dotnet-install.sh --runtime dotnet --channel 3.1 --install-dir /usr/share/dotnet
-          ./dotnet-install.sh --runtime aspnetcore --channel 3.1 --install-dir /usr/share/dotnet
-          rm dotnet-install.sh
-          echo "/usr/share/dotnet" >> $GITHUB_PATH
-          echo "DOTNET_ROOT=/usr/share/dotnet" >> $GITHUB_ENV
-
       - name: Overwrite patched files
         run: cp -r ./patched/* ./source/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image for ${{ matrix.architecture.alias }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ./patched/docker
+          file: ./patched/docker/legacy.musl.dockerfile
+          platforms: linux/${{ matrix.architecture.name }}
+          push: false
+          load: true
+          tags: dev/dotnet-builder:${{ matrix.architecture.alias }}-legacy
 
       - name: Build and test for ${{ matrix.architecture.alias }}
         run: |
           cd source
-          export OS_TYPE=linux-glibc
-          ./build.sh
+          docker run --platform=linux/${{ matrix.architecture.name }} -e OS_TYPE=linux-musl --rm \
+            -v "$(pwd)":/project \
+            dev/dotnet-builder:${{ matrix.architecture.alias }}-legacy \
+            ./build.sh
 
       - name: Verify built artifact exists
         run: |
           test -f ./source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native.so
-
-      - name: Upload native library
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-library-${{ matrix.architecture.alias }}
-          path: ./source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/
 
       - name: Upload legacy-bundle
         uses: actions/upload-artifact@v4
@@ -90,23 +82,11 @@ jobs:
     runs-on: ${{ matrix.architecture.runner }}
     needs: build
     steps:
-      - name: Download native library
-        uses: actions/download-artifact@v4
-        with:
-          name: native-library-${{ matrix.architecture.alias }}
-          path: ./native-library
-
       - name: Download legacy bundle
         uses: actions/download-artifact@v4
         with:
           name: legacy-bundle-${{ matrix.architecture.alias }}
           path: ./legacy-bundle
-
-      - name: Scan native library for vulnerabilities
-        uses: odigos-io/ci-core/vulnerabilities-scanner@main
-        with:
-          path: ./native-library
-          severity-cutoff: "HIGH,CRITICAL"
 
       - name: Scan legacy bundle for vulnerabilities
         uses: odigos-io/ci-core/vulnerabilities-scanner@main
@@ -149,16 +129,16 @@ jobs:
           name: legacy-bundle-${{ matrix.architecture.alias }}
           path: ./source/bin/tracer-home/
 
-      - name: Install .NET SDK 6.0 and .NET Core 3.1 runtime
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and test for ${{ matrix.architecture.alias }}
         run: |
-          wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
-          chmod +x dotnet-install.sh
-          ./dotnet-install.sh --channel 6.0 --install-dir /usr/share/dotnet
-          ./dotnet-install.sh --runtime dotnet --channel 3.1 --install-dir /usr/share/dotnet
-          ./dotnet-install.sh --runtime aspnetcore --channel 3.1 --install-dir /usr/share/dotnet
-          rm dotnet-install.sh
-          echo "/usr/share/dotnet" >> $GITHUB_PATH
-          echo "DOTNET_ROOT=/usr/share/dotnet" >> $GITHUB_ENV
+          cd source
+          docker run --platform=linux/${{ matrix.architecture.name }} -e OS_TYPE=linux-musl --rm \
+            -v "$(pwd)":/project \
+            dev/dotnet-builder:${{ matrix.architecture.alias }}-legacy \
+            ./build.sh
 
       - name: Copy patched files to source directory
         run: cp -r ./patched/* ./source/
@@ -166,25 +146,12 @@ jobs:
       - name: E2E test - .NET Core 3.1 span collection (${{ matrix.architecture.alias }})
         working-directory: ./source
         run: |
-          export OS_TYPE=linux-glibc
-          bash ./e2e/run-core3-spans-test.sh
+          sh ./e2e/run-core3-spans-test.sh
 
   release:
     runs-on: ubuntu-latest
     needs: [build, vulnerability-scan, test-e2e]
     steps:
-      - name: Download native library (x64)
-        uses: actions/download-artifact@v4
-        with:
-          name: native-library-x64
-          path: artifacts/native/x64
-
-      - name: Download native library (arm64)
-        uses: actions/download-artifact@v4
-        with:
-          name: native-library-arm64
-          path: artifacts/native/arm64
-
       - name: Download legacy bundle (x64)
         uses: actions/download-artifact@v4
         with:
@@ -206,8 +173,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/native/x64/OpenTelemetry.AutoInstrumentation.Native.so
-            artifacts/native/arm64/OpenTelemetry.AutoInstrumentation.Native.so
             legacy-bundle-x64.tar.gz
             legacy-bundle-arm64.tar.gz
           tag_name: legacy-${{ env.LEGACY_TAG }}

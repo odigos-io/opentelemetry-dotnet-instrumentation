@@ -8,7 +8,8 @@ RUN apk update && \
         clang \
         make \
         build-base linux-headers \
-        wget
+        wget bash
+
 
 # Install .NET Core 3.1 runtime (needed for netcoreapp3.1 test targets)
 RUN wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh && \

@@ -73,8 +73,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           submodules: recursive
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+          
       - name: Set up Docker Buildx (if cross-compiling)
         uses: docker/setup-buildx-action@v3
       - name: Update submodule to new release tag
@@ -101,13 +100,13 @@ jobs:
 
       - name: Rename and archive built .so file
         run: |
-          mkdir out
+          mkdir -p out
           cp ./source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native.so out/OpenTelemetry.AutoInstrumentation.Native-${{ matrix.architecture.alias }}.so
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: native-library-${{ matrix.architecture.alias }}
+          name: OpenTelemetry.AutoInstrumentation.Native-${{ matrix.architecture.alias }}.so
           path: out/OpenTelemetry.AutoInstrumentation.Native-${{ matrix.architecture.alias }}.so
 
   push-updates:
@@ -147,16 +146,16 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - name: Download artifacts
+      - name: Download artifact (x64)
         uses: actions/download-artifact@v4
         with:
-          name: native-library-x64
+          name: OpenTelemetry.AutoInstrumentation.Native-x64.so
           path: artifacts/amd64
 
-      - name: Download artifacts
+      - name: Download artifact (arm64)
         uses: actions/download-artifact@v4
         with:
-          name: native-library-arm64
+          name: OpenTelemetry.AutoInstrumentation.Native-arm64.so
           path: artifacts/arm64
 
       - name: Create release in this repo
