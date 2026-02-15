@@ -60,6 +60,7 @@ jobs:
           cd source
           docker run --platform=linux/${{ matrix.architecture.name }} -e OS_TYPE=linux-glibc --rm \
             -v "$(pwd)":/project \
+            -w /project \
             dev/dotnet-builder:${{ matrix.architecture.alias }} \
             ./build.sh
 
@@ -120,6 +121,7 @@ jobs:
           cd source
           docker run --platform=linux/${{ matrix.architecture.name }} -e OS_TYPE=linux-musl --rm \
           -v "$(pwd)":/project \
+          -w /project \
           dev/dotnet-builder:${{ matrix.architecture.alias }}-legacy \
           ./build.sh
 
@@ -179,6 +181,7 @@ jobs:
         run: |
           docker run --platform=linux/${{ matrix.architecture.name }} -e OS_TYPE=linux-musl --rm \
             -v "$(pwd)":/project \
+            -w /project \
             dev/dotnet-builder:${{ matrix.architecture.alias }}-legacy \
             bash ./e2e/run-core3-spans-test.sh
 
