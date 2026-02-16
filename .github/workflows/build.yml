@@ -83,10 +83,11 @@ jobs:
           - name: amd64
             alias: x64
             runner: depot-ubuntu-24.04-32
-          # - name: arm64
-          #   alias: arm64
-          #   runner: depot-ubuntu-24.04-arm-32
+          - name: arm64
+            alias: arm64
+            runner: depot-ubuntu-24.04-arm-32
     runs-on: ${{ matrix.architecture.runner }}
+    timeout-minutes: 60
 
     steps:
       - name: Check out this repository
@@ -98,75 +99,100 @@ jobs:
         run: |
           cd source
           git fetch --tags
-          git checkout ${{ env.LEGACY_TAG }}
+          git checkout "${{ env.LEGACY_TAG }}"
 
       - name: Overwrite patched files
         run: cp -r ./patched/* ./source/
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Docker image for ${{ matrix.architecture.alias }}
-        uses: docker/build-push-action@v6
-        with:
-          context: ./patched/docker
-          file: ./patched/docker/legacy.musl.dockerfile
-          platforms: linux/${{ matrix.architecture.name }}
-          push: false
-          load: true
-          tags: dev/dotnet-builder:${{ matrix.architecture.alias }}-legacy
-
-      - name: Build and test for ${{ matrix.architecture.alias }}
-        timeout-minutes: 3
+      - name: Install build dependencies
         run: |
-          # cd source
-          # docker run --platform=linux/${{ matrix.architecture.name }} -e OS_TYPE=linux-musl --rm \
-          # -v "$(pwd)":/project \
-          # -w /project \
-          # dev/dotnet-builder:${{ matrix.architecture.alias }}-legacy \
-          # -e OS_TYPE=linux-musl \
-          # ./build.sh
-          # docker run --rm \
-          #   --mount type=bind,source="${GITHUB_WORKSPACE}/source",target=/project \
-          #   -w /project \
-          #   dev/dotnet-builder:${{ matrix.architecture.alias }}-legacy \
-          #   ./build.sh
-          docker run --rm \
-            -e OS_TYPE=linux-musl \
-            --mount type=bind,source="${GITHUB_WORKSPACE}/source",target=/project \
-            -w /project \
-            dev/dotnet-builder:x64-legacy \
-            bash -lc '
-              set -euxo pipefail
-              dotnet restore build/_build.csproj --disable-parallel
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            ca-certificates curl git \
+            clang cmake make ninja-build \
+            protobuf-compiler \
+            zip unzip \
+            perl
 
-              dotnet build build/_build.csproj --no-restore -v minimal /m:1 /nodeReuse:false /p:UseSharedCompilation=false \
-                -bl:/project/msbuild.binlog \
-                "-flp:logfile=/project/msbuild.txt;verbosity=diagnostic"
-
-              ls -lah /project/msbuild.*
-            '
-
-      - name: Upload msbuild logs
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Set up .NET 6 SDK
+        uses: actions/setup-dotnet@v4
         with:
-          name: msbuild-${{ matrix.architecture.alias }}
-          path: |
-            ./source/msbuild.binlog
-            ./source/msbuild.txt
+          dotnet-version: "6.0.x"
 
+      - name: Force .NET 6 for this repo
+        run: |
+          set -euxo pipefail
+          dotnet --list-sdks
+          dotnet --version
+
+      - name: Install Zig (musl toolchain)
+        run: |
+          set -euxo pipefail
+          ARCH=$(uname -m)
+          ZIG_VER=0.11.0
+          # Download relevant zig
+          # curl -L "https://ziglang.org/download/${ZIG_VER}/zig-linux-${{ matrix.architecture.name }}-${ZIG_VER}.tar.xz" | tar -xJ
+          # sudo mv "zig-linux-x86_64-${ZIG_VER}" /opt/zig
+          # Download zig 
+          curl -L "https://ziglang.org/download/${ZIG_VER}/zig-linux-${ARCH}-${ZIG_VER}.tar.xz" -o zig.tar.xz | tar -xJ
+          sudo mv "zig-linux-${ARCH}-${ZIG_VER}" /opt/zig
+          sudo ln -sf /opt/zig/zig /usr/local/bin/zig
+          which zig
+          zig version
+
+      - name: Pin .NET SDK to 6.0
+        run: |
+          # Force .NET 6 for this repo by creating a global.json file
+          cat > source/global.json <<'EOF'
+          {
+            "sdk": {
+              "version": "6.0.428",
+              "rollForward": "latestPatch"
+            }
+          }
+          EOF
+      
+      - name: Mute git warnings about detached HEAD
+        run: git config --global advice.detachedHead false
+
+      - name: Build (musl x64 on runner)
+        working-directory: source
+        env:
+          OS_TYPE: linux-musl
+          DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+          DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+          DOTNET_MULTILEVEL_LOOKUP: "0"
+          DOTNET_USE_POLLING_FILE_WATCHER: "false"
+          DOTNET_ROOT: /usr/share/dotnet
+          PATH: /usr/share/dotnet:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+          # CMake: these are the ones it actually respects reliably
+          CMAKE_C_COMPILER: "zig;cc"
+          CMAKE_CXX_COMPILER: "zig;c++"
+          CMAKE_C_FLAGS: "-target x86_64-linux-musl"
+          CMAKE_CXX_FLAGS: "-target x86_64-linux-musl"
+          CMAKE_EXE_LINKER_FLAGS: "-target x86_64-linux-musl"
+          CMAKE_SHARED_LINKER_FLAGS: "-target x86_64-linux-musl"
+        run: |
+          set -euxo pipefail
+          dotnet --version
+          rm -rf src/OpenTelemetry.AutoInstrumentation.Native/build
+          ./build.sh
 
       - name: Verify built artifact exists
         run: |
           test -f ./source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native.so
 
-      # Upload the tracer-home directory
-      - name: Upload tracer-home
+      - name: Archive tracer-home
+        run: |
+          tar czf tracer-home-${{ matrix.architecture.alias }}.tar.gz -C ./source/bin tracer-home
+
+      - name: Upload tracer-home archive
         uses: actions/upload-artifact@v4
         with:
-          name: tracer-home-${{ matrix.architecture.alias }}
-          path: ./source/bin/tracer-home/
+          name: tracer-home-${{ matrix.architecture.alias }}.tar.gz
+          path: tracer-home-${{ matrix.architecture.alias }}.tar.gz
 
   e2e-test-legacy-musl:
     strategy:
@@ -234,14 +260,19 @@ jobs:
     runs-on: ${{ matrix.architecture.runner }}
     needs: [build-with-glibc, build-legacy-dotnet6-with-musl]
     steps:
-      - name: Download tracer-home
+      - name: Download tracer-home archive
         uses: actions/download-artifact@v4
         with:
-          name: tracer-home-${{ matrix.architecture.alias }}
-          path: ./tracer-home
+          name: tracer-home-${{ matrix.architecture.alias }}.tar.gz
+          path: ./
+
+      - name: Extract tracer-home
+        run: |
+          mkdir -p ./tracer-home
+          tar xzf tracer-home-${{ matrix.architecture.alias }}.tar.gz -C ./tracer-home
 
       - name: Scan tracer-home for vulnerabilities
         uses: odigos-io/ci-core/vulnerabilities-scanner@main
         with:
-          path: ./tracer-home
+          path: ./tracer-home/tracer-home
           severity-cutoff: "HIGH,CRITICAL"
