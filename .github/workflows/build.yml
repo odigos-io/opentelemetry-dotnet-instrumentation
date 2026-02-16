@@ -83,9 +83,9 @@ jobs:
           - name: amd64
             alias: x64
             runner: depot-ubuntu-24.04-32
-          - name: arm64
-            alias: arm64
-            runner: depot-ubuntu-24.04-arm-32
+          # - name: arm64
+          #   alias: arm64
+          #   runner: depot-ubuntu-24.04-arm-32
     runs-on: ${{ matrix.architecture.runner }}
 
     steps:
@@ -117,13 +117,45 @@ jobs:
           tags: dev/dotnet-builder:${{ matrix.architecture.alias }}-legacy
 
       - name: Build and test for ${{ matrix.architecture.alias }}
+        timeout-minutes: 3
         run: |
-          cd source
-          docker run --platform=linux/${{ matrix.architecture.name }} -e OS_TYPE=linux-musl --rm \
-          -v "$(pwd)":/project \
-          -w /project \
-          dev/dotnet-builder:${{ matrix.architecture.alias }}-legacy \
-          ./build.sh
+          # cd source
+          # docker run --platform=linux/${{ matrix.architecture.name }} -e OS_TYPE=linux-musl --rm \
+          # -v "$(pwd)":/project \
+          # -w /project \
+          # dev/dotnet-builder:${{ matrix.architecture.alias }}-legacy \
+          # -e OS_TYPE=linux-musl \
+          # ./build.sh
+          # docker run --rm \
+          #   --mount type=bind,source="${GITHUB_WORKSPACE}/source",target=/project \
+          #   -w /project \
+          #   dev/dotnet-builder:${{ matrix.architecture.alias }}-legacy \
+          #   ./build.sh
+          docker run --rm \
+            -e OS_TYPE=linux-musl \
+            --mount type=bind,source="${GITHUB_WORKSPACE}/source",target=/project \
+            -w /project \
+            dev/dotnet-builder:x64-legacy \
+            bash -lc '
+              set -euxo pipefail
+              dotnet restore build/_build.csproj --disable-parallel
+
+              dotnet build build/_build.csproj --no-restore -v minimal /m:1 /nodeReuse:false /p:UseSharedCompilation=false \
+                -bl:/project/msbuild.binlog \
+                "-flp:logfile=/project/msbuild.txt;verbosity=diagnostic"
+
+              ls -lah /project/msbuild.*
+            '
+
+      - name: Upload msbuild logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: msbuild-${{ matrix.architecture.alias }}
+          path: |
+            ./source/msbuild.binlog
+            ./source/msbuild.txt
+
 
       - name: Verify built artifact exists
         run: |

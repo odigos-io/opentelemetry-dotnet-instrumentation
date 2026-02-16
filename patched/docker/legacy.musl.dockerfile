@@ -32,9 +32,11 @@ RUN apk update \
     && apk upgrade \
     && apk add --no-cache --update \
         ca-certificates \
+        icu-libs icu-data-full \
         clang \
         cmake \
         make \
+        curl \
         bash \
         alpine-sdk \
         protobuf \
@@ -48,17 +50,13 @@ ENV PROTOBUF_PROTOC=/usr/bin/protoc
 ENV gRPC_PluginFullPath=/usr/bin/grpc_csharp_plugin
 
 # Install older .NET SDKs using the install script
-RUN wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh && \
-    chmod +x dotnet-install.sh && \
-    if [ "$TARGETARCH" = "amd64" ]; then \
-        RID=linux-musl-x64 ; \
-    elif [ "$TARGETARCH" = "arm64" ]; then \
-        RID=linux-musl-arm64 ; \
+RUN curl -sSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh \
+ && chmod +x dotnet-install.sh \
+ && if [ "$TARGETARCH" = "amd64" ]; then \
+      ./dotnet-install.sh -c 3.1 --install-dir /usr/share/dotnet --no-path ; \
     else \
-        echo "Unsupported arch: $TARGETARCH" && exit 1 ; \
-    fi && \
-    ./dotnet-install.sh --runtime dotnet --channel 3.1 --runtime-id $RID --install-dir /usr/share/dotnet && \
-    ./dotnet-install.sh --runtime aspnetcore --channel 3.1 --runtime-id $RID --install-dir /usr/share/dotnet && \
-    rm dotnet-install.sh
+      ./dotnet-install.sh --runtime dotnet --channel 3.1 --install-dir /usr/share/dotnet --no-path ; \
+    fi \
+ && rm dotnet-install.sh
 
 WORKDIR /project
