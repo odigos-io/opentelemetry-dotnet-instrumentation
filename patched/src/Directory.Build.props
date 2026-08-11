@@ -1,0 +1,54 @@
+<Project>
+  <Import Project="..\Directory.Build.props" />
+
+  <PropertyGroup>
+    <TargetFrameworks>netcoreapp3.1</TargetFrameworks>
+    <TargetFrameworks Condition="'$(OS)' == 'Windows_NT'">$(TargetFrameworks);net462</TargetFrameworks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <EnablePublicApi>true</EnablePublicApi>
+
+    <!-- NuGet packages -->
+    <IsPackable>true</IsPackable>
+    <PackageIconUrl>https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation/raw/main/opentelemetry-logo-64x64.png</PackageIconUrl>
+    <PackageIcon>packageIcon.png</PackageIcon>
+    <PackageProjectUrl>https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation/</PackageProjectUrl>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageReleaseNotes>See release notes at https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation/releases</PackageReleaseNotes>
+    <PackageTags>OpenTelemetry;OTEL;APM;tracing;profiling;instrumentation</PackageTags>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation.git</RepositoryUrl>
+    <Copyright>Copyright 2021 OpenTelemetry, originated from Datadog, Inc.</Copyright>
+    <Company>OpenTelemetry</Company>
+    <Authors>OpenTelemetry</Authors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- NuGet -->
+    <None Include="$(MSBuildThisFileDirectory)\..\opentelemetry-logo-256x256.png" Pack="true" Visible="false" PackagePath="packageIcon.png" />
+
+    <!-- StyleCop -->
+    <Compile Include="$(MSBuildThisFileDirectory)GlobalSuppressions.cs" Link="GlobalSuppressions.src.cs" />
+
+    <!-- reference assemblies let us target .NET Framework without the SDK (for example, on non-Windows) -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- Pin System.Drawing.Common to 4.7.2 (src projects only) -->
+  <ItemGroup>
+    <PackageReference Include="System.Drawing.Common" Version="4.7.2" />
+  </ItemGroup>
+
+  <!--PublicApi Analyzer-->
+  <ItemGroup Condition="'$(EnablePublicApi)'=='true'">
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="3.3.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+
+    <AdditionalFiles Include=".publicApi\$(TargetFramework)\PublicAPI.Shipped.txt" />
+    <AdditionalFiles Include=".publicApi\$(TargetFramework)\PublicAPI.Unshipped.txt" />
+    <None Include=".publicApi\*\PublicAPI.Shipped.txt" />
+    <None Include=".publicApi\*\PublicAPI.Unshipped.txt" />
+  </ItemGroup>
+</Project>

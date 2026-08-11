@@ -1,0 +1,181 @@
+name: Build and Release legacy (dotnet , musl-based)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  LEGACY_TAG: v0.4.0-beta.1
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        architecture:
+          - name: amd64
+            alias: x64
+            runner: depot-ubuntu-24.04-32
+          - name: arm64
+            alias: arm64
+            runner: depot-ubuntu-24.04-arm-32
+    runs-on: ${{ matrix.architecture.runner }}
+
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Checkout tag ${{ env.LEGACY_TAG }}
+        run: |
+          cd source
+          git fetch --tags
+          git checkout ${{ env.LEGACY_TAG }}
+
+      - name: Overwrite patched files
+        run: cp -r ./patched/* ./source/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image for ${{ matrix.architecture.alias }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ./patched/docker
+          file: ./patched/docker/legacy.musl.dockerfile
+          platforms: linux/${{ matrix.architecture.name }}
+          push: false
+          load: true
+          tags: dev/dotnet-builder:${{ matrix.architecture.alias }}-legacy
+
+      - name: Build and test for ${{ matrix.architecture.alias }}
+        run: |
+          cd source
+          docker run --platform=linux/${{ matrix.architecture.name }} -e OS_TYPE=linux-musl --rm \
+            -v "$(pwd)":/project \
+            dev/dotnet-builder:${{ matrix.architecture.alias }}-legacy \
+            ./build.sh
+
+      - name: Verify built artifact exists
+        run: |
+          test -f ./source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/OpenTelemetry.AutoInstrumentation.Native.so
+
+      - name: Upload legacy-bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-bundle-${{ matrix.architecture.alias }}
+          path: ./source/bin/tracer-home/
+
+  vulnerability-scan:
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture:
+          - name: amd64
+            alias: x64
+            runner: depot-ubuntu-24.04-8
+          - name: arm64
+            alias: arm64
+            runner: depot-ubuntu-24.04-arm-8
+    runs-on: ${{ matrix.architecture.runner }}
+    needs: build
+    steps:
+      - name: Download legacy bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: legacy-bundle-${{ matrix.architecture.alias }}
+          path: ./legacy-bundle
+
+      - name: Scan legacy bundle for vulnerabilities
+        uses: odigos-io/ci-core/vulnerabilities-scanner@main
+        with:
+          path: ./legacy-bundle
+          severity-cutoff: "HIGH,CRITICAL"
+
+  test-e2e:
+    strategy:
+      matrix:
+        architecture:
+          - name: amd64
+            alias: x64
+            runner: depot-ubuntu-24.04-8
+          - name: arm64
+            alias: arm64
+            runner: depot-ubuntu-24.04-arm-8
+    runs-on: ${{ matrix.architecture.runner }}
+    needs: build
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Download native library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-library-${{ matrix.architecture.alias }}
+          path: ./downloaded
+
+      - name: Restore native library to source directory
+        run: |
+          mkdir -p ./source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin
+          cp -r ./downloaded/* ./source/src/OpenTelemetry.AutoInstrumentation.Native/build/bin/
+
+      - name: Download legacy-bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: legacy-bundle-${{ matrix.architecture.alias }}
+          path: ./source/bin/tracer-home/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and test for ${{ matrix.architecture.alias }}
+        run: |
+          cd source
+          docker run --platform=linux/${{ matrix.architecture.name }} -e OS_TYPE=linux-musl --rm \
+            -v "$(pwd)":/project \
+            dev/dotnet-builder:${{ matrix.architecture.alias }}-legacy \
+            ./build.sh
+
+      - name: Copy patched files to source directory
+        run: cp -r ./patched/* ./source/
+
+      - name: E2E test - .NET Core 3.1 span collection (${{ matrix.architecture.alias }})
+        working-directory: ./source
+        run: |
+          sh ./e2e/run-core3-spans-test.sh
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [build, vulnerability-scan, test-e2e]
+    steps:
+      - name: Download legacy bundle (x64)
+        uses: actions/download-artifact@v4
+        with:
+          name: legacy-bundle-x64
+          path: artifacts/bundle/x64
+
+      - name: Download legacy bundle (arm64)
+        uses: actions/download-artifact@v4
+        with:
+          name: legacy-bundle-arm64
+          path: artifacts/bundle/arm64
+
+      - name: Archive legacy bundles
+        run: |
+          cd artifacts/bundle/x64 && tar czf ../../../legacy-bundle-x64.tar.gz . && cd -
+          cd artifacts/bundle/arm64 && tar czf ../../../legacy-bundle-arm64.tar.gz . && cd -
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            legacy-bundle-x64.tar.gz
+            legacy-bundle-arm64.tar.gz
+          tag_name: legacy-${{ env.LEGACY_TAG }}
+          name: Legacy ${{ env.LEGACY_TAG }}
+          body: |
+            Legacy build based on upstream ${{ env.LEGACY_TAG }} with Odigos patches applied.
